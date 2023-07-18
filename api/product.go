@@ -60,12 +60,34 @@ func (server *Server) trackProduct(ctx *gin.Context) {
 		return
 	}
 
-	price, err := server.ScrapeProductPrice(ctx, &product)
-	if err != nil {
+	priceChan := make(chan float64)
+	errorChan := make(chan error)
+
+	go func() {
+		price, err := util.ScrapePriceFromURL(req.URL)
+		if err != nil {
+			errorChan <- err
+			return
+		}
+		log.Printf("Initial price for product %d: %f\n", product.ID, price)
+		priceChan <- price
+	}()
+
+	select {
+	case price := <-priceChan:
+		_, err := server.store.UpdateProductPrice(ctx, db.UpdateProductPriceParams{
+			ID:        product.ID,
+			BasePrice: price,
+		})
+		if err != nil {
+			ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+			return
+		}
+
+	case err := <-errorChan:
 		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
 		return
 	}
-	log.Printf("Initial price for product %d: %f\n", product.ID, price)
 
 	cronExp := fmt.Sprintf("@every %dm", req.TrackingFrequency)
 	err = server.cron.AddFunc(cronExp, func() {
@@ -93,6 +115,7 @@ func (server *Server) ScrapeProductPrice(ctx context.Context, product *db.Produc
 	errorChan := make(chan error)
 
 	go func() {
+		log.Printf("Fetching price for product %d: %s\n", product.ID, product.Link)
 		fetchedPrice, err := util.ScrapePriceFromURL(product.Link)
 		if err != nil {
 			log.Printf("Error fetching price: %v", err)
@@ -106,15 +129,10 @@ func (server *Server) ScrapeProductPrice(ctx context.Context, product *db.Produc
 			return
 		}
 
-		_, err = server.store.UpdateProduct(ctx, db.UpdateProductParams{
-			ID:        product.ID,
-			BasePrice: fetchedPrice,
-		})
-		if err != nil {
-			log.Printf("Error updating product price: %v", err)
-			errorChan <- err
-			return
-		}
+		// TODO: Update product price in DB
+		// get price changes for the product with the product id
+		// if the price changes retrieved exists, compare the last item in the list with the fetched price
+		// if the price changes retrieved does not exist, create a new price change with the fetched price
 
 		log.Printf("Updated price for product %d: %f\n", product.ID, fetchedPrice)
 		resultChan <- fetchedPrice
@@ -126,4 +144,30 @@ func (server *Server) ScrapeProductPrice(ctx context.Context, product *db.Produc
 	case err := <-errorChan:
 		return 0, err
 	}
+}
+
+type getProductsRequest struct {
+	Page int32 `form:"page" binding:"required,min=1"`
+	Size int32 `form:"size" binding:"required,min=1,max=100"`
+}
+
+func (server *Server) getProducts(ctx *gin.Context) {
+	var req getProductsRequest
+	if err := ctx.ShouldBindQuery(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, errorResponse(err))
+		return
+	}
+
+	products, err := server.store.ListProductsByUserID(ctx, db.ListProductsByUserIDParams{
+		Limit:  req.Size,
+		Offset: (req.Page - 1) * req.Size,
+		UserID: 1,
+	})
+
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
+	}
+
+	ctx.JSON(http.StatusOK, products)
 }

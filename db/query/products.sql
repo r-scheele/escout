@@ -13,9 +13,12 @@ SELECT * FROM products WHERE id = $1 LIMIT 1;
 -- name: ListProductsByUserID :many
 SELECT * FROM products WHERE user_id = $1 ORDER BY id LIMIT $2 OFFSET $3;
 
--- name: UpdateProduct :one
-UPDATE products SET name = $2, link = $3, base_price = $4, percentage_change = $5, tracking_frequency = $6, notification_threshold = $7
-WHERE id = $1 RETURNING *;
+-- name: UpdateProductPrice :one
+UPDATE products
+SET 
+    base_price = $2
+WHERE id = $1 
+RETURNING *;
 
 -- name: DeleteProduct :exec
 DELETE FROM products WHERE id = $1;

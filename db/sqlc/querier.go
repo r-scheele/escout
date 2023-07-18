@@ -34,7 +34,7 @@ type Querier interface {
 	ListProductsByUserID(ctx context.Context, arg ListProductsByUserIDParams) ([]Product, error)
 	ListUsers(ctx context.Context, arg ListUsersParams) ([]ListUsersRow, error)
 	UpdatePriceChange(ctx context.Context, arg UpdatePriceChangeParams) (PriceChange, error)
-	UpdateProduct(ctx context.Context, arg UpdateProductParams) (Product, error)
+	UpdateProductPrice(ctx context.Context, arg UpdateProductPriceParams) (Product, error)
 	UpdateUser(ctx context.Context, arg UpdateUserParams) (User, error)
 }
 

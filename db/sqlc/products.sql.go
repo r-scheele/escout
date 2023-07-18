@@ -309,31 +309,21 @@ func (q *Queries) ListProductsByUserID(ctx context.Context, arg ListProductsByUs
 	return items, nil
 }
 
-const updateProduct = `-- name: UpdateProduct :one
-UPDATE products SET name = $2, link = $3, base_price = $4, percentage_change = $5, tracking_frequency = $6, notification_threshold = $7
-WHERE id = $1 RETURNING id, user_id, name, link, base_price, percentage_change, tracking_frequency, notification_threshold, created_at
+const updateProductPrice = `-- name: UpdateProductPrice :one
+UPDATE products
+SET 
+    base_price = $2
+WHERE id = $1 
+RETURNING id, user_id, name, link, base_price, percentage_change, tracking_frequency, notification_threshold, created_at
 `
 
-type UpdateProductParams struct {
-	ID                    int64   `json:"id"`
-	Name                  string  `json:"name"`
-	Link                  string  `json:"link"`
-	BasePrice             float64 `json:"base_price"`
-	PercentageChange      float64 `json:"percentage_change"`
-	TrackingFrequency     int32   `json:"tracking_frequency"`
-	NotificationThreshold float64 `json:"notification_threshold"`
+type UpdateProductPriceParams struct {
+	ID        int64   `json:"id"`
+	BasePrice float64 `json:"base_price"`
 }
 
-func (q *Queries) UpdateProduct(ctx context.Context, arg UpdateProductParams) (Product, error) {
-	row := q.db.QueryRow(ctx, updateProduct,
-		arg.ID,
-		arg.Name,
-		arg.Link,
-		arg.BasePrice,
-		arg.PercentageChange,
-		arg.TrackingFrequency,
-		arg.NotificationThreshold,
-	)
+func (q *Queries) UpdateProductPrice(ctx context.Context, arg UpdateProductPriceParams) (Product, error) {
+	row := q.db.QueryRow(ctx, updateProductPrice, arg.ID, arg.BasePrice)
 	var i Product
 	err := row.Scan(
 		&i.ID,

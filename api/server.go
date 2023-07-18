@@ -42,11 +42,14 @@ func (server *Server) setupRouter() {
 	router.GET("/", server.ping)
 
 	router.POST("/users", server.createUser)
+	router.GET("/users/:id", server.getUser)
 	router.GET("/users", server.getUsers)
 
 	router.POST("/products", server.trackProduct)
-	router.POST("/users/login", server.loginUser)
-	router.POST("/tokens/renew_access", server.renewAccessToken)
+	router.GET("/products", server.getProducts)
+
+	// router.POST("/users/login", server.loginUser)
+	// router.POST("/tokens/renew_access", server.renewAccessToken)
 
 	server.router = router
 }
