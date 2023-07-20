@@ -169,7 +169,7 @@ func (server *Server) loginUser(ctx *gin.Context) {
 }
 
 type getUserRequest struct {
-	Username string `uri:"username" binding:"required,alphanum"`
+	ID int64 `uri:"id" binding:"required,min=1"`
 }
 
 type getUserResponse struct {
@@ -185,9 +185,7 @@ func (server *Server) getUser(ctx *gin.Context) {
 		return
 	}
 
-	user, err := server.store.GetUser(ctx, db.GetUserParams{
-		Username: req.Username,
-	})
+	user, err := server.store.GetUserByID(ctx, req.ID)
 	if err != nil {
 		if errors.Is(err, db.ErrRecordNotFound) {
 			ctx.JSON(http.StatusNotFound, errorResponse(err))
@@ -226,7 +224,6 @@ func (server *Server) getUsers(ctx *gin.Context) {
 		Limit:  req.Size,
 		Offset: (req.Page - 1) * req.Size,
 	})
-
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
 		return

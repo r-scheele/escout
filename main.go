@@ -34,7 +34,6 @@ func main() {
 	store := db.NewStore(connPool)
 
 	runGinServer(config, store)
-
 }
 
 // func runDBMigration(migrationURL string, dbSource string) {

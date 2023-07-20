@@ -8,15 +8,13 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type PriceChange struct {
-	ID        int64              `json:"id"`
-	ProductID int64              `json:"product_id"`
-	Price     pgtype.Numeric     `json:"price"`
-	ChangedAt pgtype.Timestamptz `json:"changed_at"`
-	CreatedAt time.Time          `json:"created_at"`
+	ID        int64     `json:"id"`
+	ProductID int64     `json:"product_id"`
+	Price     float64   `json:"price"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 type Product struct {

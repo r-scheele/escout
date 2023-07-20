@@ -89,7 +89,8 @@ func (server *Server) trackProduct(ctx *gin.Context) {
 		return
 	}
 
-	cronExp := fmt.Sprintf("@every %dm", req.TrackingFrequency)
+	cronExp := fmt.Sprintf("@every %dh", req.TrackingFrequency*24*60)
+
 	err = server.cron.AddFunc(cronExp, func() {
 		_, err := server.ScrapeProductPrice(ctx, &product)
 		if err != nil {
@@ -129,12 +130,43 @@ func (server *Server) ScrapeProductPrice(ctx context.Context, product *db.Produc
 			return
 		}
 
-		// TODO: Update product price in DB
-		// get price changes for the product with the product id
+		price_changes, err := server.store.GetPriceChangesForUserAndProduct(ctx, db.GetPriceChangesForUserAndProductParams{
+			ID:        1, // user id
+			ProductID: product.ID,
+		})
+		if err != nil {
+			log.Printf("Error retrieving price changes: %v", err)
+			errorChan <- err
+			return
+		}
 		// if the price changes retrieved exists, compare the last item in the list with the fetched price
-		// if the price changes retrieved does not exist, create a new price change with the fetched price
-
-		log.Printf("Updated price for product %d: %f\n", product.ID, fetchedPrice)
+		if len(price_changes) == 0 {
+			if fetchedPrice != product.BasePrice {
+				_, err := server.store.CreatePriceChange(ctx, db.CreatePriceChangeParams{
+					ProductID: product.ID,
+					Price:     fetchedPrice,
+					CreatedAt: time.Now(),
+				})
+				if err != nil {
+					log.Printf("Error creating price change: %v", err)
+					errorChan <- err
+					return
+				}
+			}
+		} else {
+			if fetchedPrice != price_changes[len(price_changes)-1].Price {
+				_, err := server.store.CreatePriceChange(ctx, db.CreatePriceChangeParams{
+					ProductID: product.ID,
+					Price:     fetchedPrice,
+					CreatedAt: time.Now(),
+				})
+				if err != nil {
+					log.Printf("Error creating price change: %v", err)
+					errorChan <- err
+					return
+				}
+			}
+		}
 		resultChan <- fetchedPrice
 	}()
 
@@ -151,6 +183,11 @@ type getProductsRequest struct {
 	Size int32 `form:"size" binding:"required,min=1,max=100"`
 }
 
+type productResponse struct {
+	Product      db.Product       `json:"product"`
+	PriceChanges []db.PriceChange `json:"price_changes"`
+}
+
 func (server *Server) getProducts(ctx *gin.Context) {
 	var req getProductsRequest
 	if err := ctx.ShouldBindQuery(&req); err != nil {
@@ -163,11 +200,50 @@ func (server *Server) getProducts(ctx *gin.Context) {
 		Offset: (req.Page - 1) * req.Size,
 		UserID: 1,
 	})
-
 	if err != nil {
 		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
 		return
 	}
 
-	ctx.JSON(http.StatusOK, products)
+	productResponses := make([]productResponse, len(products))
+	for i, product := range products {
+		priceChanges, err := server.store.GetPriceChangesForUserAndProduct(ctx, db.GetPriceChangesForUserAndProductParams{
+			ID:        1,
+			ProductID: product.ID,
+		})
+		if err != nil {
+			ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+			return
+		}
+
+		productResponses[i] = productResponse{
+			Product:      product,
+			PriceChanges: priceChanges,
+		}
+	}
+
+	ctx.JSON(http.StatusOK, productResponses)
+}
+
+type getProductPriceChangesRequest struct {
+	ID int64 `uri:"id" binding:"required"`
+}
+
+func (server *Server) getProductPriceChanges(ctx *gin.Context) {
+	var req getProductPriceChangesRequest
+	if err := ctx.ShouldBindUri(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, errorResponse(err))
+		return
+	}
+	priceChanges, err := server.store.GetPriceChangesForUserAndProduct(ctx, db.GetPriceChangesForUserAndProductParams{
+		ID:        1,
+		ProductID: req.ID,
+	})
+	if err != nil {
+		log.Printf("Error retrieving price changes: %v", err)
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
+	}
+
+	ctx.JSON(http.StatusOK, priceChanges)
 }

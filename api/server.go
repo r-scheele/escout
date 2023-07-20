@@ -46,6 +46,8 @@ func (server *Server) setupRouter() {
 	router.GET("/users", server.getUsers)
 
 	router.POST("/products", server.trackProduct)
+	// router.GET("/products/:id", server.getProduct)
+	router.GET("/products/:id/prices", server.getProductPriceChanges)
 	router.GET("/products", server.getProducts)
 
 	// router.POST("/users/login", server.loginUser)

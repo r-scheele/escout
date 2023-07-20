@@ -8,34 +8,25 @@ package db
 import (
 	"context"
 	"time"
-
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const createPriceChange = `-- name: CreatePriceChange :one
-INSERT INTO price_changes (product_id, price, changed_at, created_at) VALUES ($1, $2, $3, $4) RETURNING id, product_id, price, changed_at, created_at
+INSERT INTO price_changes (product_id, price, created_at) VALUES ($1, $2, $3) RETURNING id, product_id, price, created_at
 `
 
 type CreatePriceChangeParams struct {
-	ProductID int64              `json:"product_id"`
-	Price     pgtype.Numeric     `json:"price"`
-	ChangedAt pgtype.Timestamptz `json:"changed_at"`
-	CreatedAt time.Time          `json:"created_at"`
+	ProductID int64     `json:"product_id"`
+	Price     float64   `json:"price"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 func (q *Queries) CreatePriceChange(ctx context.Context, arg CreatePriceChangeParams) (PriceChange, error) {
-	row := q.db.QueryRow(ctx, createPriceChange,
-		arg.ProductID,
-		arg.Price,
-		arg.ChangedAt,
-		arg.CreatedAt,
-	)
+	row := q.db.QueryRow(ctx, createPriceChange, arg.ProductID, arg.Price, arg.CreatedAt)
 	var i PriceChange
 	err := row.Scan(
 		&i.ID,
 		&i.ProductID,
 		&i.Price,
-		&i.ChangedAt,
 		&i.CreatedAt,
 	)
 	return i, err
@@ -50,32 +41,15 @@ func (q *Queries) DeletePriceChange(ctx context.Context, id int64) error {
 	return err
 }
 
-const getPriceChangeByID = `-- name: GetPriceChangeByID :one
-SELECT id, product_id, price, changed_at, created_at FROM price_changes WHERE id = $1 LIMIT 1
-`
-
-func (q *Queries) GetPriceChangeByID(ctx context.Context, id int64) (PriceChange, error) {
-	row := q.db.QueryRow(ctx, getPriceChangeByID, id)
-	var i PriceChange
-	err := row.Scan(
-		&i.ID,
-		&i.ProductID,
-		&i.Price,
-		&i.ChangedAt,
-		&i.CreatedAt,
-	)
-	return i, err
-}
-
 const getPriceChangesByPriceRange = `-- name: GetPriceChangesByPriceRange :many
-SELECT id, product_id, price, changed_at, created_at FROM price_changes WHERE price BETWEEN $1 AND $2 ORDER BY changed_at DESC LIMIT $3 OFFSET $4
+SELECT id, product_id, price, created_at FROM price_changes WHERE price BETWEEN $1 AND $2 ORDER BY created_at DESC LIMIT $3 OFFSET $4
 `
 
 type GetPriceChangesByPriceRangeParams struct {
-	Price   pgtype.Numeric `json:"price"`
-	Price_2 pgtype.Numeric `json:"price_2"`
-	Limit   int32          `json:"limit"`
-	Offset  int32          `json:"offset"`
+	Price   float64 `json:"price"`
+	Price_2 float64 `json:"price_2"`
+	Limit   int32   `json:"limit"`
+	Offset  int32   `json:"offset"`
 }
 
 func (q *Queries) GetPriceChangesByPriceRange(ctx context.Context, arg GetPriceChangesByPriceRangeParams) ([]PriceChange, error) {
@@ -96,7 +70,6 @@ func (q *Queries) GetPriceChangesByPriceRange(ctx context.Context, arg GetPriceC
 			&i.ID,
 			&i.ProductID,
 			&i.Price,
-			&i.ChangedAt,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -110,20 +83,20 @@ func (q *Queries) GetPriceChangesByPriceRange(ctx context.Context, arg GetPriceC
 }
 
 const getPriceChangesByTimeRange = `-- name: GetPriceChangesByTimeRange :many
-SELECT id, product_id, price, changed_at, created_at FROM price_changes WHERE changed_at BETWEEN $1 AND $2 ORDER BY changed_at DESC LIMIT $3 OFFSET $4
+SELECT id, product_id, price, created_at FROM price_changes WHERE created_at BETWEEN $1 AND $2 ORDER BY created_at DESC LIMIT $3 OFFSET $4
 `
 
 type GetPriceChangesByTimeRangeParams struct {
-	ChangedAt   pgtype.Timestamptz `json:"changed_at"`
-	ChangedAt_2 pgtype.Timestamptz `json:"changed_at_2"`
-	Limit       int32              `json:"limit"`
-	Offset      int32              `json:"offset"`
+	CreatedAt   time.Time `json:"created_at"`
+	CreatedAt_2 time.Time `json:"created_at_2"`
+	Limit       int32     `json:"limit"`
+	Offset      int32     `json:"offset"`
 }
 
 func (q *Queries) GetPriceChangesByTimeRange(ctx context.Context, arg GetPriceChangesByTimeRangeParams) ([]PriceChange, error) {
 	rows, err := q.db.Query(ctx, getPriceChangesByTimeRange,
-		arg.ChangedAt,
-		arg.ChangedAt_2,
+		arg.CreatedAt,
+		arg.CreatedAt_2,
 		arg.Limit,
 		arg.Offset,
 	)
@@ -138,7 +111,44 @@ func (q *Queries) GetPriceChangesByTimeRange(ctx context.Context, arg GetPriceCh
 			&i.ID,
 			&i.ProductID,
 			&i.Price,
-			&i.ChangedAt,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getPriceChangesForUserAndProduct = `-- name: GetPriceChangesForUserAndProduct :many
+SELECT pc.id, pc.product_id, pc.price, pc.created_at
+FROM price_changes pc
+JOIN products p ON pc.product_id = p.id
+JOIN users u ON u.id = p.user_id
+WHERE u.id = $1 AND pc.product_id = $2
+`
+
+type GetPriceChangesForUserAndProductParams struct {
+	ID        int64 `json:"id"`
+	ProductID int64 `json:"product_id"`
+}
+
+func (q *Queries) GetPriceChangesForUserAndProduct(ctx context.Context, arg GetPriceChangesForUserAndProductParams) ([]PriceChange, error) {
+	rows, err := q.db.Query(ctx, getPriceChangesForUserAndProduct, arg.ID, arg.ProductID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []PriceChange{}
+	for rows.Next() {
+		var i PriceChange
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProductID,
+			&i.Price,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -152,7 +162,7 @@ func (q *Queries) GetPriceChangesByTimeRange(ctx context.Context, arg GetPriceCh
 }
 
 const listPriceChangesByProductID = `-- name: ListPriceChangesByProductID :many
-SELECT id, product_id, price, changed_at, created_at FROM price_changes WHERE product_id = $1 ORDER BY changed_at DESC LIMIT $2 OFFSET $3
+SELECT id, product_id, price, created_at FROM price_changes WHERE product_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3
 `
 
 type ListPriceChangesByProductIDParams struct {
@@ -174,7 +184,6 @@ func (q *Queries) ListPriceChangesByProductID(ctx context.Context, arg ListPrice
 			&i.ID,
 			&i.ProductID,
 			&i.Price,
-			&i.ChangedAt,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -188,23 +197,22 @@ func (q *Queries) ListPriceChangesByProductID(ctx context.Context, arg ListPrice
 }
 
 const updatePriceChange = `-- name: UpdatePriceChange :one
-UPDATE price_changes SET price = $2, changed_at = $3 WHERE id = $1 RETURNING id, product_id, price, changed_at, created_at
+UPDATE price_changes SET price = $2, created_at = $3 WHERE id = $1 RETURNING id, product_id, price, created_at
 `
 
 type UpdatePriceChangeParams struct {
-	ID        int64              `json:"id"`
-	Price     pgtype.Numeric     `json:"price"`
-	ChangedAt pgtype.Timestamptz `json:"changed_at"`
+	ID        int64     `json:"id"`
+	Price     float64   `json:"price"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 func (q *Queries) UpdatePriceChange(ctx context.Context, arg UpdatePriceChangeParams) (PriceChange, error) {
-	row := q.db.QueryRow(ctx, updatePriceChange, arg.ID, arg.Price, arg.ChangedAt)
+	row := q.db.QueryRow(ctx, updatePriceChange, arg.ID, arg.Price, arg.CreatedAt)
 	var i PriceChange
 	err := row.Scan(
 		&i.ID,
 		&i.ProductID,
 		&i.Price,
-		&i.ChangedAt,
 		&i.CreatedAt,
 	)
 	return i, err

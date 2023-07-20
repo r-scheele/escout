@@ -8,8 +8,6 @@ package db
 import (
 	"context"
 	"time"
-
-	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const checkUserProduct = `-- name: CheckUserProduct :one
@@ -154,8 +152,8 @@ HAVING AVG(price) BETWEEN $1 AND $2
 `
 
 type GetProductsByAveragePriceParams struct {
-	Price   pgtype.Numeric `json:"price"`
-	Price_2 pgtype.Numeric `json:"price_2"`
+	Price   float64 `json:"price"`
+	Price_2 float64 `json:"price_2"`
 }
 
 type GetProductsByAveragePriceRow struct {

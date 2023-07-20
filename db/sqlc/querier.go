@@ -19,9 +19,9 @@ type Querier interface {
 	DeletePriceChange(ctx context.Context, id int64) error
 	DeleteProduct(ctx context.Context, id int64) error
 	DeleteUser(ctx context.Context, id int64) error
-	GetPriceChangeByID(ctx context.Context, id int64) (PriceChange, error)
 	GetPriceChangesByPriceRange(ctx context.Context, arg GetPriceChangesByPriceRangeParams) ([]PriceChange, error)
 	GetPriceChangesByTimeRange(ctx context.Context, arg GetPriceChangesByTimeRangeParams) ([]PriceChange, error)
+	GetPriceChangesForUserAndProduct(ctx context.Context, arg GetPriceChangesForUserAndProductParams) ([]PriceChange, error)
 	GetProductByID(ctx context.Context, id int64) (Product, error)
 	GetProductByLinkAndUserID(ctx context.Context, arg GetProductByLinkAndUserIDParams) (GetProductByLinkAndUserIDRow, error)
 	GetProductsByAveragePrice(ctx context.Context, arg GetProductsByAveragePriceParams) ([]GetProductsByAveragePriceRow, error)

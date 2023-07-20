@@ -22,8 +22,7 @@ CREATE TABLE IF NOT EXISTS products (
 CREATE TABLE IF NOT EXISTS price_changes (
   id bigserial PRIMARY KEY,
   product_id bigint NOT NULL,
-  price numeric,
-  changed_at timestamptz,
+  price float NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   FOREIGN KEY (product_id) REFERENCES products (id)
 );
