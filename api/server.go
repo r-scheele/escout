@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gocolly/colly"
 	db "github.com/r-scheele/escout/db/sqlc"
 	"github.com/r-scheele/escout/token"
 	"github.com/r-scheele/escout/util"
@@ -17,6 +18,7 @@ type Server struct {
 	tokenMaker token.Maker
 	router     *gin.Engine
 	cron       *cron.Cron
+	colly      *colly.Collector
 }
 
 // NewServer creates a new HTTP server and set up routing.
@@ -26,11 +28,19 @@ func NewServer(config util.Config, store db.Store) (*Server, error) {
 		return nil, fmt.Errorf("cannot create token maker: %w", err)
 	}
 
+	var domains []string
+	for domain := range util.AllowedDomains {
+		domains = append(domains, domain)
+	}
+
 	server := &Server{
 		config:     config,
 		store:      store,
 		tokenMaker: tokenMaker,
 		cron:       cron.New(),
+		colly: colly.NewCollector(
+			colly.AllowedDomains(domains...),
+		),
 	}
 
 	server.setupRouter()

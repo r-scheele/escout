@@ -21,6 +21,9 @@ type trackProductRequest struct {
 	NotificationThreshold float64 `json:"notification_threshold" binding:"required"`
 }
 
+type trackProductResponse struct {
+}
+
 func (server *Server) trackProduct(ctx *gin.Context) {
 	var req trackProductRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
@@ -64,7 +67,7 @@ func (server *Server) trackProduct(ctx *gin.Context) {
 	errorChan := make(chan error)
 
 	go func() {
-		price, err := util.ScrapePriceFromURL(req.URL)
+		price, err := util.ScrapePriceFromURL(server.colly, req.URL)
 		if err != nil {
 			errorChan <- err
 			return
@@ -117,7 +120,7 @@ func (server *Server) ScrapeProductPrice(ctx context.Context, product *db.Produc
 
 	go func() {
 		log.Printf("Fetching price for product %d: %s\n", product.ID, product.Link)
-		fetchedPrice, err := util.ScrapePriceFromURL(product.Link)
+		fetchedPrice, err := util.ScrapePriceFromURL(server.colly, product.Link)
 		if err != nil {
 			log.Printf("Error fetching price: %v", err)
 			errorChan <- err
