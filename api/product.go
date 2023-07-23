@@ -11,18 +11,17 @@ import (
 	"github.com/gin-gonic/gin"
 	db "github.com/r-scheele/escout/db/sqlc"
 	"github.com/r-scheele/escout/util"
+	"github.com/robfig/cron/v3"
 )
 
 type trackProductRequest struct {
-	Name                  string  `json:"product_name" binding:"required"`
-	URL                   string  `json:"product_url" binding:"required"`
-	TrackingFrequency     int32   `json:"tracking_frequency" binding:"required"`
-	PercentageChange      float64 `json:"percentage_change" binding:"required"`
-	NotificationThreshold float64 `json:"notification_threshold" binding:"required"`
+	Name              string  `json:"product_name" binding:"required"`
+	URL               string  `json:"product_url" binding:"required"`
+	TrackingFrequency int32   `json:"tracking_frequency" binding:"required"`
+	PercentageChange  float64 `json:"percentage_change" binding:"required"`
 }
 
-type trackProductResponse struct {
-}
+type trackProductResponse struct{}
 
 func (server *Server) trackProduct(ctx *gin.Context) {
 	var req trackProductRequest
@@ -44,14 +43,14 @@ func (server *Server) trackProduct(ctx *gin.Context) {
 	if err != nil {
 		if err != sql.ErrNoRows {
 			product, err = server.store.CreateProduct(ctx, db.CreateProductParams{
-				UserID:                1,
-				Name:                  req.Name,
-				Link:                  req.URL,
-				BasePrice:             0,
-				PercentageChange:      req.PercentageChange,
-				TrackingFrequency:     req.TrackingFrequency,
-				NotificationThreshold: req.NotificationThreshold,
-				CreatedAt:             time.Now(),
+				UserID:            1,
+				Name:              req.Name,
+				Link:              req.URL,
+				BasePrice:         0,
+				PercentageChange:  req.PercentageChange,
+				TrackingFrequency: req.TrackingFrequency,
+				CreatedAt:         time.Now(),
+				CronJobID:         0,
 			})
 			if err != nil {
 				ctx.JSON(http.StatusInternalServerError, errorResponse(err))
@@ -92,93 +91,176 @@ func (server *Server) trackProduct(ctx *gin.Context) {
 		return
 	}
 
-	cronExp := fmt.Sprintf("@every %dh", req.TrackingFrequency*24*60)
-
-	err = server.cron.AddFunc(cronExp, func() {
-		_, err := server.ScrapeProductPrice(ctx, &product)
-		if err != nil {
-			log.Printf("Error scraping product price: %v", err)
-		}
-		// Add additional logic to check price against NotificationThreshold and generate notification
-	})
+	err = server.handleCronJob(ctx, true, &product)
 	if err != nil {
-		log.Println("Error adding cron job:", err)
-		ctx.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to schedule cron job"})
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
 		return
 	}
 
-	server.cron.Start()
 	ctx.JSON(http.StatusOK, gin.H{
 		"message": "Product tracked successfully",
 		"product": product,
 	})
 }
 
-func (server *Server) ScrapeProductPrice(ctx context.Context, product *db.Product) (float64, error) {
-	resultChan := make(chan float64)
-	errorChan := make(chan error)
+type UpdateProductRequest struct {
+	IsActive          *bool    `json:"is_active"`
+	Name              *string  `json:"name"`
+	Link              *string  `json:"link"`
+	PercentageChange  *float64 `json:"percentage_change"`
+	TrackingFrequency *int32   `json:"tracking_frequency"`
+}
 
-	go func() {
-		log.Printf("Fetching price for product %d: %s\n", product.ID, product.Link)
-		fetchedPrice, err := util.ScrapePriceFromURL(server.colly, product.Link)
-		if err != nil {
-			log.Printf("Error fetching price: %v", err)
-			errorChan <- err
-			return
-		}
-
-		if fetchedPrice < 0 {
-			log.Printf("Invalid price fetched: %f", fetchedPrice)
-			errorChan <- fmt.Errorf("invalid price fetched for product %d: %f", product.ID, fetchedPrice)
-			return
-		}
-
-		price_changes, err := server.store.GetPriceChangesForUserAndProduct(ctx, db.GetPriceChangesForUserAndProductParams{
-			ID:        1, // user id
-			ProductID: product.ID,
-		})
-		if err != nil {
-			log.Printf("Error retrieving price changes: %v", err)
-			errorChan <- err
-			return
-		}
-		// if the price changes retrieved exists, compare the last item in the list with the fetched price
-		if len(price_changes) == 0 {
-			if fetchedPrice != product.BasePrice {
-				_, err := server.store.CreatePriceChange(ctx, db.CreatePriceChangeParams{
-					ProductID: product.ID,
-					Price:     fetchedPrice,
-					CreatedAt: time.Now(),
-				})
-				if err != nil {
-					log.Printf("Error creating price change: %v", err)
-					errorChan <- err
-					return
-				}
-			}
-		} else {
-			if fetchedPrice != price_changes[len(price_changes)-1].Price {
-				_, err := server.store.CreatePriceChange(ctx, db.CreatePriceChangeParams{
-					ProductID: product.ID,
-					Price:     fetchedPrice,
-					CreatedAt: time.Now(),
-				})
-				if err != nil {
-					log.Printf("Error creating price change: %v", err)
-					errorChan <- err
-					return
-				}
-			}
-		}
-		resultChan <- fetchedPrice
-	}()
-
-	select {
-	case result := <-resultChan:
-		return result, nil
-	case err := <-errorChan:
-		return 0, err
+func (server *Server) updateProduct(ctx *gin.Context) {
+	productReq, err := server.parseProductRequest(ctx)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, errorResponse(err))
+		return
 	}
+
+	req, err := server.parseUpdateRequest(ctx)
+	if err != nil {
+		ctx.JSON(http.StatusBadRequest, errorResponse(err))
+		return
+	}
+
+	product, err := server.store.GetProductByID(ctx, productReq.ID)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
+	}
+
+	params, err := server.prepareUpdateParams(ctx, req, product)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
+	}
+
+	product, err = server.store.UpdateProduct(ctx, params)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
+	}
+
+	ctx.JSON(http.StatusOK, gin.H{
+		"message": "Product updated successfully",
+		"product": product,
+	})
+}
+
+func (server *Server) parseProductRequest(ctx *gin.Context) (GetProductRequest, error) {
+	var productReq GetProductRequest
+	err := ctx.ShouldBindUri(&productReq)
+	return productReq, err
+}
+
+func (server *Server) parseUpdateRequest(ctx *gin.Context) (UpdateProductRequest, error) {
+	var req UpdateProductRequest
+	err := ctx.ShouldBindJSON(&req)
+	return req, err
+}
+
+func (server *Server) prepareUpdateParams(ctx *gin.Context, req UpdateProductRequest, product db.Product) (db.UpdateProductParams, error) {
+	params := db.UpdateProductParams{
+		ID:                product.ID,
+		IsActive:          product.IsActive,
+		Name:              product.Name,
+		PercentageChange:  product.PercentageChange,
+		TrackingFrequency: product.TrackingFrequency,
+	}
+
+	if req.IsActive != nil {
+		params.IsActive = *req.IsActive
+		err := server.handleCronJob(ctx, params.IsActive, &product)
+		if err != nil {
+			return params, err
+		}
+	}
+
+	if req.Name != nil {
+		params.Name = *req.Name
+	}
+
+	if req.PercentageChange != nil {
+		params.PercentageChange = *req.PercentageChange
+	}
+
+	if req.TrackingFrequency != nil {
+		params.TrackingFrequency = *req.TrackingFrequency
+	}
+
+	return params, nil
+}
+
+func (server *Server) handleCronJob(ctx *gin.Context, isActive bool, product *db.Product) error {
+	if !isActive {
+		server.cron.Remove(cron.EntryID(product.CronJobID))
+	} else {
+		entryId, err := server.scheduleCronJob(ctx, product)
+		if err != nil {
+			return err
+		}
+
+		err = server.updateCronJobIdInDB(ctx, product, entryId)
+		if err != nil {
+			return err
+		}
+
+		server.cron.Start()
+	}
+
+	return nil
+}
+
+func (server *Server) scheduleCronJob(ctx *gin.Context, product *db.Product) (cron.EntryID, error) {
+	cronExp := fmt.Sprintf("@every %dh", product.TrackingFrequency*24)
+	cronFunc := func() {
+		_, err := server.ScrapeProductPrice(ctx, product)
+		if err != nil {
+			log.Printf("Error scraping product price: %v", err)
+		}
+	}
+	return server.cron.AddFunc(cronExp, cronFunc)
+}
+
+func (server *Server) updateCronJobIdInDB(ctx *gin.Context, product *db.Product, entryId cron.EntryID) error {
+	_, err := server.store.UpdateCronJobId(ctx, db.UpdateCronJobIdParams{
+		ID:        product.ID,
+		CronJobID: int64(entryId),
+	})
+	return err
+}
+
+type GetProductRequest struct {
+	ID int64 `uri:"id" binding:"required"`
+}
+
+func (server *Server) getProduct(ctx *gin.Context) {
+	var req GetProductRequest
+	if err := ctx.ShouldBindUri(&req); err != nil {
+		ctx.JSON(http.StatusBadRequest, errorResponse(err))
+		return
+	}
+
+	product, err := server.store.GetProductByID(ctx, req.ID)
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
+	}
+
+	priceChanges, err := server.store.GetPriceChangesForUserAndProduct(ctx, db.GetPriceChangesForUserAndProductParams{
+		ID:        1,
+		ProductID: product.ID,
+	})
+	if err != nil {
+		ctx.JSON(http.StatusInternalServerError, errorResponse(err))
+		return
+	}
+
+	ctx.JSON(http.StatusOK, productResponse{
+		Product:      product,
+		PriceChanges: priceChanges,
+	})
 }
 
 type getProductsRequest struct {
@@ -249,4 +331,71 @@ func (server *Server) getProductPriceChanges(ctx *gin.Context) {
 	}
 
 	ctx.JSON(http.StatusOK, priceChanges)
+}
+
+func (server *Server) ScrapeProductPrice(ctx context.Context, product *db.Product) (float64, error) {
+	resultChan := make(chan float64)
+	errorChan := make(chan error)
+
+	go func() {
+		log.Printf("Fetching price for product %d: %s\n", product.ID, product.Link)
+		fetchedPrice, err := util.ScrapePriceFromURL(server.colly, product.Link)
+		if err != nil {
+			log.Printf("Error fetching price: %v", err)
+			errorChan <- err
+			return
+		}
+
+		if fetchedPrice < 0 {
+			log.Printf("Invalid price fetched: %f", fetchedPrice)
+			errorChan <- fmt.Errorf("invalid price fetched for product %d: %f", product.ID, fetchedPrice)
+			return
+		}
+
+		price_changes, err := server.store.GetPriceChangesForUserAndProduct(ctx, db.GetPriceChangesForUserAndProductParams{
+			ID:        1, // user id
+			ProductID: product.ID,
+		})
+		if err != nil {
+			log.Printf("Error retrieving price changes: %v", err)
+			errorChan <- err
+			return
+		}
+		// if the price changes retrieved exists, compare the last item in the list with the fetched price
+		if len(price_changes) == 0 {
+			if fetchedPrice != product.BasePrice {
+				_, err := server.store.CreatePriceChange(ctx, db.CreatePriceChangeParams{
+					ProductID: product.ID,
+					Price:     fetchedPrice,
+					CreatedAt: time.Now(),
+				})
+				if err != nil {
+					log.Printf("Error creating price change: %v", err)
+					errorChan <- err
+					return
+				}
+			}
+		} else {
+			if fetchedPrice != price_changes[len(price_changes)-1].Price {
+				_, err := server.store.CreatePriceChange(ctx, db.CreatePriceChangeParams{
+					ProductID: product.ID,
+					Price:     fetchedPrice,
+					CreatedAt: time.Now(),
+				})
+				if err != nil {
+					log.Printf("Error creating price change: %v", err)
+					errorChan <- err
+					return
+				}
+			}
+		}
+		resultChan <- fetchedPrice
+	}()
+
+	select {
+	case result := <-resultChan:
+		return result, nil
+	case err := <-errorChan:
+		return 0, err
+	}
 }

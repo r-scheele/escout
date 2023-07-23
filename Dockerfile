@@ -23,4 +23,3 @@ RUN chmod +x /app/wait-for.sh
 # Run the binary program
 CMD ["/app/wait-for.sh", "database:5432", "--", "/app/start.sh"]
 
-

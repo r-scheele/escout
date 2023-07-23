@@ -18,15 +18,16 @@ type PriceChange struct {
 }
 
 type Product struct {
-	ID                    int64     `json:"id"`
-	UserID                int64     `json:"user_id"`
-	Name                  string    `json:"name"`
-	Link                  string    `json:"link"`
-	BasePrice             float64   `json:"base_price"`
-	PercentageChange      float64   `json:"percentage_change"`
-	TrackingFrequency     int32     `json:"tracking_frequency"`
-	NotificationThreshold float64   `json:"notification_threshold"`
-	CreatedAt             time.Time `json:"created_at"`
+	ID                int64     `json:"id"`
+	UserID            int64     `json:"user_id"`
+	Name              string    `json:"name"`
+	Link              string    `json:"link"`
+	BasePrice         float64   `json:"base_price"`
+	PercentageChange  float64   `json:"percentage_change"`
+	TrackingFrequency int32     `json:"tracking_frequency"`
+	CronJobID         int64     `json:"cron_job_id"`
+	IsActive          bool      `json:"is_active"`
+	CreatedAt         time.Time `json:"created_at"`
 }
 
 type Session struct {

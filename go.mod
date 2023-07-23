@@ -10,7 +10,6 @@ require (
 	github.com/google/uuid v1.3.0
 	github.com/jackc/pgx/v5 v5.4.1
 	github.com/o1egl/paseto v1.0.0
-	github.com/robfig/cron v1.2.0
 	github.com/rs/zerolog v1.29.1
 	github.com/spf13/viper v1.16.0
 	golang.org/x/crypto v0.11.0
@@ -55,6 +54,7 @@ require (
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/pelletier/go-toml/v2 v2.0.8 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
+	github.com/robfig/cron/v3 v3.0.0 // indirect
 	github.com/saintfish/chardet v0.0.0-20230101081208-5e3ef4b5456d // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/spf13/afero v1.9.5 // indirect

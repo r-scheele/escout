@@ -14,7 +14,8 @@ CREATE TABLE IF NOT EXISTS products (
   base_price float NOT NULL,
   percentage_change float NOT NULL,
   tracking_frequency integer NOT NULL,
-  notification_threshold float NOT NULL,
+  cron_job_id bigint NOT NULL,
+  is_active boolean NOT NULL DEFAULT true,
   created_at timestamptz NOT NULL DEFAULT now(),
   FOREIGN KEY (user_id) REFERENCES users (id)
 );

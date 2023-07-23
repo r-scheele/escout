@@ -8,7 +8,7 @@ import (
 	db "github.com/r-scheele/escout/db/sqlc"
 	"github.com/r-scheele/escout/token"
 	"github.com/r-scheele/escout/util"
-	"github.com/robfig/cron"
+	"github.com/robfig/cron/v3"
 )
 
 // Server serves HTTP requests for our banking service.
@@ -56,11 +56,12 @@ func (server *Server) setupRouter() {
 	router.GET("/users", server.getUsers)
 
 	router.POST("/products", server.trackProduct)
-	// router.GET("/products/:id", server.getProduct)
+	router.GET("/products/:id", server.getProduct)
+	router.PUT("/products/:id", server.updateProduct)
 	router.GET("/products/:id/prices", server.getProductPriceChanges)
 	router.GET("/products", server.getProducts)
 
-	// router.POST("/users/login", server.loginUser)
+	router.POST("/users/login", server.loginUser)
 	// router.POST("/tokens/renew_access", server.renewAccessToken)
 
 	server.router = router

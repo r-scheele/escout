@@ -11,7 +11,7 @@ import (
 )
 
 const checkUserProduct = `-- name: CheckUserProduct :one
-SELECT id, user_id, name, link, base_price, percentage_change, tracking_frequency, notification_threshold, created_at FROM products 
+SELECT id, user_id, name, link, base_price, percentage_change, tracking_frequency, cron_job_id, is_active, created_at FROM products 
 WHERE user_id = $1 AND link = $2
 LIMIT 1
 `
@@ -32,26 +32,27 @@ func (q *Queries) CheckUserProduct(ctx context.Context, arg CheckUserProductPara
 		&i.BasePrice,
 		&i.PercentageChange,
 		&i.TrackingFrequency,
-		&i.NotificationThreshold,
+		&i.CronJobID,
+		&i.IsActive,
 		&i.CreatedAt,
 	)
 	return i, err
 }
 
 const createProduct = `-- name: CreateProduct :one
-INSERT INTO products (user_id, name, link, base_price, percentage_change, tracking_frequency, notification_threshold, created_at) 
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, user_id, name, link, base_price, percentage_change, tracking_frequency, notification_threshold, created_at
+INSERT INTO products (user_id, name, link, base_price, percentage_change, tracking_frequency, created_at, cron_job_id) 
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, user_id, name, link, base_price, percentage_change, tracking_frequency, cron_job_id, is_active, created_at
 `
 
 type CreateProductParams struct {
-	UserID                int64     `json:"user_id"`
-	Name                  string    `json:"name"`
-	Link                  string    `json:"link"`
-	BasePrice             float64   `json:"base_price"`
-	PercentageChange      float64   `json:"percentage_change"`
-	TrackingFrequency     int32     `json:"tracking_frequency"`
-	NotificationThreshold float64   `json:"notification_threshold"`
-	CreatedAt             time.Time `json:"created_at"`
+	UserID            int64     `json:"user_id"`
+	Name              string    `json:"name"`
+	Link              string    `json:"link"`
+	BasePrice         float64   `json:"base_price"`
+	PercentageChange  float64   `json:"percentage_change"`
+	TrackingFrequency int32     `json:"tracking_frequency"`
+	CreatedAt         time.Time `json:"created_at"`
+	CronJobID         int64     `json:"cron_job_id"`
 }
 
 func (q *Queries) CreateProduct(ctx context.Context, arg CreateProductParams) (Product, error) {
@@ -62,8 +63,8 @@ func (q *Queries) CreateProduct(ctx context.Context, arg CreateProductParams) (P
 		arg.BasePrice,
 		arg.PercentageChange,
 		arg.TrackingFrequency,
-		arg.NotificationThreshold,
 		arg.CreatedAt,
+		arg.CronJobID,
 	)
 	var i Product
 	err := row.Scan(
@@ -74,7 +75,8 @@ func (q *Queries) CreateProduct(ctx context.Context, arg CreateProductParams) (P
 		&i.BasePrice,
 		&i.PercentageChange,
 		&i.TrackingFrequency,
-		&i.NotificationThreshold,
+		&i.CronJobID,
+		&i.IsActive,
 		&i.CreatedAt,
 	)
 	return i, err
@@ -90,7 +92,7 @@ func (q *Queries) DeleteProduct(ctx context.Context, id int64) error {
 }
 
 const getProductByID = `-- name: GetProductByID :one
-SELECT id, user_id, name, link, base_price, percentage_change, tracking_frequency, notification_threshold, created_at FROM products WHERE id = $1 LIMIT 1
+SELECT id, user_id, name, link, base_price, percentage_change, tracking_frequency, cron_job_id, is_active, created_at FROM products WHERE id = $1 LIMIT 1
 `
 
 func (q *Queries) GetProductByID(ctx context.Context, id int64) (Product, error) {
@@ -104,7 +106,8 @@ func (q *Queries) GetProductByID(ctx context.Context, id int64) (Product, error)
 		&i.BasePrice,
 		&i.PercentageChange,
 		&i.TrackingFrequency,
-		&i.NotificationThreshold,
+		&i.CronJobID,
+		&i.IsActive,
 		&i.CreatedAt,
 	)
 	return i, err
@@ -182,7 +185,7 @@ func (q *Queries) GetProductsByAveragePrice(ctx context.Context, arg GetProducts
 }
 
 const getProductsByStore = `-- name: GetProductsByStore :many
-SELECT id, user_id, name, link, base_price, percentage_change, tracking_frequency, notification_threshold, created_at FROM products WHERE link LIKE $1 ORDER BY id LIMIT $2 OFFSET $3
+SELECT id, user_id, name, link, base_price, percentage_change, tracking_frequency, cron_job_id, is_active, created_at FROM products WHERE link LIKE $1 ORDER BY id LIMIT $2 OFFSET $3
 `
 
 type GetProductsByStoreParams struct {
@@ -208,7 +211,8 @@ func (q *Queries) GetProductsByStore(ctx context.Context, arg GetProductsByStore
 			&i.BasePrice,
 			&i.PercentageChange,
 			&i.TrackingFrequency,
-			&i.NotificationThreshold,
+			&i.CronJobID,
+			&i.IsActive,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -222,7 +226,7 @@ func (q *Queries) GetProductsByStore(ctx context.Context, arg GetProductsByStore
 }
 
 const getProductsByTimeRange = `-- name: GetProductsByTimeRange :many
-SELECT id, user_id, name, link, base_price, percentage_change, tracking_frequency, notification_threshold, created_at FROM products WHERE created_at BETWEEN $1 AND $2 ORDER BY id LIMIT $3 OFFSET $4
+SELECT id, user_id, name, link, base_price, percentage_change, tracking_frequency, cron_job_id, is_active, created_at FROM products WHERE created_at BETWEEN $1 AND $2 ORDER BY id LIMIT $3 OFFSET $4
 `
 
 type GetProductsByTimeRangeParams struct {
@@ -254,7 +258,8 @@ func (q *Queries) GetProductsByTimeRange(ctx context.Context, arg GetProductsByT
 			&i.BasePrice,
 			&i.PercentageChange,
 			&i.TrackingFrequency,
-			&i.NotificationThreshold,
+			&i.CronJobID,
+			&i.IsActive,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -268,7 +273,7 @@ func (q *Queries) GetProductsByTimeRange(ctx context.Context, arg GetProductsByT
 }
 
 const listProductsByUserID = `-- name: ListProductsByUserID :many
-SELECT id, user_id, name, link, base_price, percentage_change, tracking_frequency, notification_threshold, created_at FROM products WHERE user_id = $1 ORDER BY id LIMIT $2 OFFSET $3
+SELECT id, user_id, name, link, base_price, percentage_change, tracking_frequency, cron_job_id, is_active, created_at FROM products WHERE user_id = $1 ORDER BY id LIMIT $2 OFFSET $3
 `
 
 type ListProductsByUserIDParams struct {
@@ -294,7 +299,8 @@ func (q *Queries) ListProductsByUserID(ctx context.Context, arg ListProductsByUs
 			&i.BasePrice,
 			&i.PercentageChange,
 			&i.TrackingFrequency,
-			&i.NotificationThreshold,
+			&i.CronJobID,
+			&i.IsActive,
 			&i.CreatedAt,
 		); err != nil {
 			return nil, err
@@ -307,12 +313,113 @@ func (q *Queries) ListProductsByUserID(ctx context.Context, arg ListProductsByUs
 	return items, nil
 }
 
+const updateCronJobId = `-- name: UpdateCronJobId :one
+UPDATE products
+SET 
+    cron_job_id = $2
+WHERE id = $1
+RETURNING id, user_id, name, link, base_price, percentage_change, tracking_frequency, cron_job_id, is_active, created_at
+`
+
+type UpdateCronJobIdParams struct {
+	ID        int64 `json:"id"`
+	CronJobID int64 `json:"cron_job_id"`
+}
+
+func (q *Queries) UpdateCronJobId(ctx context.Context, arg UpdateCronJobIdParams) (Product, error) {
+	row := q.db.QueryRow(ctx, updateCronJobId, arg.ID, arg.CronJobID)
+	var i Product
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Name,
+		&i.Link,
+		&i.BasePrice,
+		&i.PercentageChange,
+		&i.TrackingFrequency,
+		&i.CronJobID,
+		&i.IsActive,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const updateJobStatus = `-- name: UpdateJobStatus :one
+UPDATE products
+SET 
+    is_active = $2
+WHERE id = $1
+RETURNING id, user_id, name, link, base_price, percentage_change, tracking_frequency, cron_job_id, is_active, created_at
+`
+
+type UpdateJobStatusParams struct {
+	ID       int64 `json:"id"`
+	IsActive bool  `json:"is_active"`
+}
+
+func (q *Queries) UpdateJobStatus(ctx context.Context, arg UpdateJobStatusParams) (Product, error) {
+	row := q.db.QueryRow(ctx, updateJobStatus, arg.ID, arg.IsActive)
+	var i Product
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Name,
+		&i.Link,
+		&i.BasePrice,
+		&i.PercentageChange,
+		&i.TrackingFrequency,
+		&i.CronJobID,
+		&i.IsActive,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const updateProduct = `-- name: UpdateProduct :one
+UPDATE products 
+SET is_active = $2, percentage_change = $3, tracking_frequency = $4, name = $5
+WHERE id = $1
+RETURNING id, user_id, name, link, base_price, percentage_change, tracking_frequency, cron_job_id, is_active, created_at
+`
+
+type UpdateProductParams struct {
+	ID                int64   `json:"id"`
+	IsActive          bool    `json:"is_active"`
+	PercentageChange  float64 `json:"percentage_change"`
+	TrackingFrequency int32   `json:"tracking_frequency"`
+	Name              string  `json:"name"`
+}
+
+func (q *Queries) UpdateProduct(ctx context.Context, arg UpdateProductParams) (Product, error) {
+	row := q.db.QueryRow(ctx, updateProduct,
+		arg.ID,
+		arg.IsActive,
+		arg.PercentageChange,
+		arg.TrackingFrequency,
+		arg.Name,
+	)
+	var i Product
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Name,
+		&i.Link,
+		&i.BasePrice,
+		&i.PercentageChange,
+		&i.TrackingFrequency,
+		&i.CronJobID,
+		&i.IsActive,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const updateProductPrice = `-- name: UpdateProductPrice :one
 UPDATE products
 SET 
     base_price = $2
 WHERE id = $1 
-RETURNING id, user_id, name, link, base_price, percentage_change, tracking_frequency, notification_threshold, created_at
+RETURNING id, user_id, name, link, base_price, percentage_change, tracking_frequency, cron_job_id, is_active, created_at
 `
 
 type UpdateProductPriceParams struct {
@@ -331,7 +438,8 @@ func (q *Queries) UpdateProductPrice(ctx context.Context, arg UpdateProductPrice
 		&i.BasePrice,
 		&i.PercentageChange,
 		&i.TrackingFrequency,
-		&i.NotificationThreshold,
+		&i.CronJobID,
+		&i.IsActive,
 		&i.CreatedAt,
 	)
 	return i, err
